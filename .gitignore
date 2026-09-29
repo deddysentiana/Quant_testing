@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+ 
+# Virtual environment 
+venv/
+.venv/
+env/
+ENV/
+ 
+# Hasil & cache data
+data/
+out/
+ 
+# Secret
+.env
+.env.*
+*.key
+*.pem
