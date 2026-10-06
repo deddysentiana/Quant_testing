@@ -10,9 +10,9 @@ import matplotlib.pyplot as plt
 from backtest import run
 from data import load_data
 from metrics import metrics, show
+from montecarlo import bootstrap, permutation_test, show_mc
 from strategies import STRATEGIES
- 
- 
+  
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--ticker", default="BBCA.JK")
@@ -21,13 +21,14 @@ def main():
     p.add_argument("--strategy", default="sma_rsi", choices=STRATEGIES)
     p.add_argument("--split", type=float, default=0.7, help="porsi in-sample")
     p.add_argument("--synthetic", action="store_true")
+    p.add_argument("--mc", type=int, default=1000, help="jumlah simulasi bootstrap (0 = mati)")
+    p.add_argument("--perm", type=int, default=200, help="jumlah simulasi permutation test (0 = mati)")
     a = p.parse_args()
  
     df = load_data(a.ticker, a.start, a.end, a.synthetic)
     cut = int(len(df) * a.split)
     strat = STRATEGIES[a.strategy]
  
-    # Optimasi parameter HANYA di in-sample
     best, best_sharpe = None, -np.inf
     for params in strat["grid"]:
         res = run(df, strat["signal"](df, **params)).iloc[:cut]
@@ -53,6 +54,30 @@ def main():
     plt.tight_layout()
     plt.savefig(out / "equity.png", dpi=120)
     print(f"\nGrafik disimpan: {out / 'equity.png'}")
+
+    if a.mc <= 0 and a.perm <= 0:
+        return
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+    if a.mc > 0:
+        dist = bootstrap(oos["net"], a.mc)
+        show_mc(f"MONTE CARLO bootstrap OOS ({a.mc} simulasi)", dist)
+        axes[0].hist(dist["Sharpe"], bins=50, color="steelblue")
+        axes[0].axvline(metrics(oos["net"])["Sharpe"], color="red", label="Sharpe aktual")
+        axes[0].set_title("Bootstrap Sharpe OOS")
+        axes[0].legend()
+    if a.perm > 0:
+        real, sims, pval = permutation_test(df, cut, strat["signal"], best, a.perm)
+        print(f"\nPERMUTATION TEST OOS ({a.perm} simulasi)")
+        print(f"  Sharpe aktual : {real:>9.2f}")
+        print(f"  Median acak   : {np.median(sims):>9.2f}")
+        print(f"  p-value       : {pval:>9.3f}  (< 0.05 = kemungkinan bukan kebetulan)")
+        axes[1].hist(sims, bins=40, color="gray")
+        axes[1].axvline(real, color="red", label="Sharpe aktual")
+        axes[1].set_title(f"Permutation test (p = {pval:.3f})")
+        axes[1].legend()
+    fig.tight_layout()
+    fig.savefig(out / "montecarlo.png", dpi=120)
+    print(f"\nGrafik disimpan: {out / 'montecarlo.png'}")
  
  
 if __name__ == "__main__":
